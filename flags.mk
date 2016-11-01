@@ -1,8 +1,7 @@
 #########################################################################
 # COMMON COMPILATION FLAGS                                              #
 #########################################################################
-
-CROSS_COMPILE   ?= arm-linux-gnueabihf-
+CROSS_COMPILE=$(ANDROID_BUILD_TOP)/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-gnu-5.1/bin/aarch64-linux-gnu-
 CC              ?= $(CROSS_COMPILE)gcc
 AR		?= $(CROSS_COMPILE)ar
 
