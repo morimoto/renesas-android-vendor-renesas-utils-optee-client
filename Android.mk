@@ -10,7 +10,7 @@ include $(LOCAL_PATH)/config.mk
 include $(LOCAL_PATH)/flags.mk
 
 ################################################################################
-# Build libteec.so - TEE (Trusted Execution Environment) shared library        #
+# Build libteec.a - TEE (Trusted Execution Environment) static library         #
 ################################################################################
 include $(CLEAR_VARS)
 LOCAL_CFLAGS += -DANDROID_BUILD -D_GNU_SOURCE -DDEBUG=1
@@ -34,8 +34,36 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/public \
 LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libteec
 LOCAL_MODULE_TAGS := optional
-#include $(BUILD_SHARED_LIBRARY)
+
 include $(BUILD_STATIC_LIBRARY)
+
+################################################################################
+# Build libteec.so - TEE (Trusted Execution Environment) shared library        #
+################################################################################
+include $(CLEAR_VARS)
+LOCAL_CFLAGS += -DANDROID_BUILD -D_GNU_SOURCE -DDEBUG=1
+LOCAL_CFLAGS += $(CFLAGS)
+
+ifeq ($(CFG_TEE_CLIENT_LOG_FILE), true)
+LOCAL_CFLAGS += -DTEEC_LOG_FILE=$(CFG_TEE_CLIENT_LOG_FILE)
+endif
+#CROSS_COMPILE := $(ANDROID_BUILD_TOP)/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-gnu-5.1/bin/aarch64-linux-gnu-
+
+LOCAL_CFLAGS += -DDEBUGLEVEL_$(CFG_TEE_CLIENT_LOG_LEVEL)
+LOCAL_CFLAGS += -DBINARY_PREFIX=\"TEEC\"
+
+LOCAL_SRC_FILES += libteec/src/tee_client_api.c
+LOCAL_SRC_FILES += libteec/src/teec_trace.c
+LOCAL_LDLIBS := -ldl
+
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/public \
+                $(LOCAL_PATH)/libteec/include \
+
+#LOCAL_PRELINK_MODULE := false
+LOCAL_MODULE := libteec
+LOCAL_MODULE_TAGS := optional
+include $(BUILD_SHARED_LIBRARY)
+
 
 ################################################################################
 # Build tee supplicant                                                         #
@@ -64,7 +92,10 @@ LOCAL_STATIC_LIBRARIES := libteec libm libz libc libdl
 LOCAL_MODULE := tee-supp
 LOCAL_MODULE_TAGS := optional
 LOCAL_FORCE_STATIC_EXECUTABLE := true
-LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+#LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+#LOCAL_POST_PROCESS_COMMAND := $(hide) cp $(ANDROID_PRODUCT_OUT)/system/bin/tee-supp $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_POST_INSTALL_CMD :=  cp $(ANDROID_PRODUCT_OUT)/system/bin/tee-supp $(TARGET_RECOVERY_ROOT_OUT)/sbin
+
 include $(BUILD_EXECUTABLE)
 
 ################################################################################
