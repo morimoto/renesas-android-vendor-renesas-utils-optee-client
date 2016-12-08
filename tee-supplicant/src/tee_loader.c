@@ -9,29 +9,24 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <cutils/properties.h>
+#include "tee_loader.h"
 
 #define ERR_GENERIC (-1)
 
 #define INSMOD(mod, len, opts) syscall(__NR_init_module, mod, len, opts)
 
-#define OPTEE "/sbin/optee.ko"
-#define OPTEE_TZ "/sbin/optee_armtz.ko"
-#define SUPPLICANT "/sbin/tee-supp"
+#define  OPTEE_DEV_FILE "/dev/opteearmtz00"
 
-struct modparams {
-	const char *module;
-};
-#define MODNUMS	2
-static const struct modparams modules[MODNUMS] = {
-				{OPTEE}, {OPTEE_TZ}};
-int main()
+#define MOD_LOAD_TO 5
+
+int tee_load_modules(struct modparams *modules)
 {
 	FILE *mod;
 	char *buf = NULL;
 	struct stat st;
 	int ret, i;
 	off_t size;
-	pid_t child, sid;
 
 	for (i = 0; i < MODNUMS; i++) {
 		ret = stat(modules[i].module, &st);
@@ -68,27 +63,17 @@ int main()
 		free(buf);
 		buf = NULL;
 	}
-
-	/*
-	*By here we suppose to have optee.ko and optee_armtz.ko loaded
-	* Load and demonize TEE supplicant.
-	*/
-
-	if ((child = fork()) == 0) {
-		/*We are in child process
-		* Create sid to detach from parent;
-		*/
-		sid = setsid();
-		if (sid < 0) {
-			perror("Can't create session for supplicant");
-			exit(ERR_GENERIC);
-		}
-		execl(SUPPLICANT, "tee-supp", NULL, NULL);
-		/*Should not return*/
-		exit(ERR_GENERIC);
-	}
-
-	exit (0);
+	i = 0;
+	do {
+		/*Check if optee device file created*/
+		ret = stat(OPTEE_DEV_FILE, &st);
+		if (!ret)
+			break;
+		sleep(1);
+	} while (++i<MOD_LOAD_TO);
+	if (!ret)
+		return 0;
+	else
+		return ERR_GENERIC;
 }
-
 
