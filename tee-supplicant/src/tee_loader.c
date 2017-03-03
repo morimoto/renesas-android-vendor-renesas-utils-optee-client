@@ -14,7 +14,7 @@
 
 #define ERR_GENERIC (-1)
 
-#define INSMOD(mod, len, opts) syscall(__NR_init_module, mod, len, opts)
+#define INSMOD(fd, opts) syscall(__NR_finit_module, fd, opts, 0)
 
 #define  OPTEE_DEV_FILE "/dev/opteearmtz00"
 
@@ -22,11 +22,9 @@
 
 int tee_load_modules(struct modparams *modules)
 {
-	FILE *mod;
-	char *buf = NULL;
+	int fd;
 	struct stat st;
 	int ret, i;
-	off_t size;
 
 	for (i = 0; i < MODNUMS; i++) {
 		ret = stat(modules[i].module, &st);
@@ -35,34 +33,20 @@ int tee_load_modules(struct modparams *modules)
 			return ERR_GENERIC;
 		}
 
-		buf = malloc(st.st_size);
-		if(!buf) {
-			printf("Error:Memory allocation failed (%ld)\n", st.st_size);
-			return ERR_GENERIC;
-		}
-
-		mod = fopen(modules[i].module, "rb");
-		if (!mod ) {
+		fd = open(modules[i].module, O_RDONLY | O_NOFOLLOW | O_CLOEXEC);
+		if (fd == -1) {
 			printf("%s file open error\n", modules[i].module);
-			free(buf);
 			return ERR_GENERIC;
 		} else {
-			size = fread(buf, 1U, (size_t)st.st_size, mod);
-			fclose(mod);
-			if (size != st.st_size) {
-				printf("File read error %ld\n", size);
-				free(buf);
-				return ERR_GENERIC;
-			}
-			if (INSMOD(buf, size, "")) {
+			if (INSMOD(fd, "") == -1) {
 				printf("Moduile insert error (%s)\n", modules[i].module);
-				free(buf);
+				close(fd);
 				return ERR_GENERIC;
 			}
+			close(fd);
 		}
-		free(buf);
-		buf = NULL;
 	}
+
 	i = 0;
 	do {
 		/*Check if optee device file created*/
