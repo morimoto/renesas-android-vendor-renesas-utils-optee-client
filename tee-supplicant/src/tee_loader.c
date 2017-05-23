@@ -2,6 +2,7 @@
  * Copyright (c) 2016 GlobalLogic
  */
 
+#include <errno.h>
 #include <fcntl.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -38,8 +39,12 @@ int tee_load_modules(struct modparams *modules)
 			printf("%s file open error\n", modules[i].module);
 			return ERR_GENERIC;
 		} else {
-			if (INSMOD(fd, "") == -1) {
-				printf("Moduile insert error (%s)\n", modules[i].module);
+			/*
+			 * Insert kernel module. Continue if module is already inserted.
+			 */
+			if ((INSMOD(fd, "") == -1) && (errno != EEXIST)) {
+				printf("Failed to insert (%s) module, error = (%d)\n",
+						modules[i].module, errno);
 				close(fd);
 				return ERR_GENERIC;
 			}
