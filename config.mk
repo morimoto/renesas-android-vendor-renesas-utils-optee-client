@@ -30,7 +30,7 @@ CFG_TEE_SUPP_LOG_FILE ?= \"/data/teesupp.log\"
 
 # CFG_TEE_CLIENT_LOAD_PATH
 # The location of the client library file.
-CFG_TEE_CLIENT_LOAD_PATH ?= /lib
+CFG_TEE_CLIENT_LOAD_PATH ?= /system/lib
 
 # CFG_TEE_FS_PARENT_PATH
 # Path to folder that will contain TEE filesystem.
@@ -50,7 +50,7 @@ CFG_GP_SOCKETS ?= y
 # Default output directory.
 # May be absolute, or relative to the optee_client source directory.
 O               ?= out
-
+export O
 # To be used instead of $(O) in sub-directories
 OO := $(if $(filter /%,$(O)),$(O),$(CURDIR)/../$(O))
 
