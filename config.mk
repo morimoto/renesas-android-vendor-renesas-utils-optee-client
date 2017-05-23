@@ -31,7 +31,7 @@ CFG_TEE_CLIENT_LOG_FILE ?= $(CFG_TEE_FS_PARENT_PATH)/teec.log
 
 # CFG_TEE_CLIENT_LOAD_PATH
 #   The location of the client library file.
-CFG_TEE_CLIENT_LOAD_PATH ?= /lib
+CFG_TEE_CLIENT_LOAD_PATH ?= /system/lib
 
 # CFG_TA_TEST_PATH
 #   Enable the tee test path.  When enabled, the supplicant will try
@@ -56,7 +56,7 @@ CFG_FTRACE_SUPPORT ?= y
 # Default output directory.
 # May be absolute, or relative to the optee_client source directory.
 O               ?= out
-
+export O
 # To be used instead of $(O) in sub-directories
 OO := $(if $(filter /%,$(O)),$(O),$(CURDIR)/../$(O))
 
