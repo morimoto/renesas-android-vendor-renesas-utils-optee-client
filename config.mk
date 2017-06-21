@@ -22,7 +22,7 @@ export CFG_TEE_SUPP_LOG_LEVEL
 
 # CFG_TEE_CLIENT_LOG_FILE
 # The location of the client log file when logging to file is enabled.
-CFG_TEE_CLIENT_LOG_FILE ?= \"/data/teec.log\"
+# CFG_TEE_CLIENT_LOG_FILE ?= \"/data/teec.log\"
 
 # CFG_TEE_SUPP_LOG_FILE
 # The location of the supplicant log file when logging to file is enabled.
