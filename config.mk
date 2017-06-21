@@ -27,7 +27,7 @@ CFG_TEE_FS_PARENT_PATH ?= /mnt
 
 # CFG_TEE_CLIENT_LOG_FILE
 #   The location of the client log file when logging to file is enabled.
-CFG_TEE_CLIENT_LOG_FILE ?= $(CFG_TEE_FS_PARENT_PATH)/teec.log
+# CFG_TEE_CLIENT_LOG_FILE ?= $(CFG_TEE_FS_PARENT_PATH)/teec.log
 
 # CFG_TEE_CLIENT_LOAD_PATH
 #   The location of the client library file.
