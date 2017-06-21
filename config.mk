@@ -31,7 +31,7 @@ CFG_TEE_CLIENT_LOG_FILE ?= $(CFG_TEE_FS_PARENT_PATH)/teec.log
 
 # CFG_TEE_CLIENT_LOAD_PATH
 #   The location of the client library file.
-CFG_TEE_CLIENT_LOAD_PATH ?= /system/lib
+CFG_TEE_CLIENT_LOAD_PATH ?= /vendor/lib64
 
 # CFG_TA_TEST_PATH
 #   Enable the tee test path.  When enabled, the supplicant will try
