@@ -62,33 +62,6 @@ LOCAL_MODULE := libteec
 LOCAL_MODULE_TAGS := optional
 include $(BUILD_SHARED_LIBRARY)
 
-
-################################################################################
-# Build tee supplicant                                                         #
-################################################################################
-include $(CLEAR_VARS)
-LOCAL_CFLAGS += -DANDROID_BUILD -DDEBUG=1
-LOCAL_CFLAGS += $(CFLAGS)
-
-LOCAL_CFLAGS += -DDEBUGLEVEL_$(CFG_TEE_SUPP_LOG_LEVEL)
-LOCAL_CFLAGS += -DBINARY_PREFIX=\"TEES\"
-LOCAL_CFLAGS += -DTEEC_LOAD_PATH=\"$(CFG_TEE_CLIENT_LOAD_PATH)\"
-LOCAL_CFLAGS += -DTEE_FS_PARENT_PATH=\"$(CFG_TEE_FS_PARENT_PATH)\"
-LOCAL_SRC_FILES := $(call all-c-files-under, ./tee-supplicant/src/)
-
-LOCAL_C_INCLUDES := $(LOCAL_PATH)/public \
-		$(LOCAL_PATH)/libteec/include \
-		$(LOCAL_PATH)/tee-supplicant/src
-
-LOCAL_STATIC_LIBRARIES := libteec libm libz libc libdl
-LOCAL_MODULE := tee-supp
-LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT_SBIN)
-LOCAL_UNSTRIPPED_PATH := $(TARGET_ROOT_OUT_SBIN_UNSTRIPPED)
-LOCAL_FORCE_STATIC_EXECUTABLE := true
-
-include $(BUILD_EXECUTABLE)
-
 ################################################################################
 # Build hyper flash driver CA                                                  #
 ################################################################################
@@ -109,3 +82,10 @@ LOCAL_MODULE_TAGS := optional
 LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(BUILD_EXECUTABLE)
+
+################################################################################
+# Build tee supplicant                                                         #
+################################################################################
+
+include $(CLEAR_VARS)
+include $(LOCAL_PATH)/tee-supplicant/tee_supplicant_android.mk
