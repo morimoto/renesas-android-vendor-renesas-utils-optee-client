@@ -44,6 +44,7 @@
 #define HYPER_CMD_INIT_DRV		0
 #define HYPER_CMD_READ			1
 #define HYPER_CMD_WRITE			2
+#define HYPER_CMD_ERASE			3
 
 #define HYPER_FN "hyper.bin"
 
@@ -58,6 +59,7 @@ enum {
 	IMG_BL31,
 	IMG_OPTEE,
 	IMG_UBOOT,
+	IMG_SSTDATA,
 };
 
 typedef struct img_param {
@@ -68,8 +70,8 @@ typedef struct img_param {
 	uint8_t *buf;
 }img_param_t;
 
-/*We can flash 6 images*/
-#define MAX_IMAGES 6
+/*We can flash 7 images*/
+#define MAX_IMAGES 7
 
 /*Set legal address and maximum size for every image*/
 static struct img_param img_params[MAX_IMAGES] = {
@@ -85,12 +87,16 @@ static struct img_param img_params[MAX_IMAGES] = {
 		.flash_addr = 0x200000, .size =2*SECTOR_SIZE,},
 		{.img_id = IMG_UBOOT, .img_name = "UBOOT",
 		.flash_addr = 0x640000, .size =4*SECTOR_SIZE,},
+		{.img_id = IMG_SSTDATA, .img_name = "SSTDATA",
+		.flash_addr = 0x300000, .size =4*SECTOR_SIZE,},
 };
 
 int read_hyper_flash(uint32_t start_addr, uint32_t size, const char *hyper_fn);
-int write_hyper_flash( struct img_param *img);
+int write_hyper_flash(struct img_param *img);
+int erase_hyper_flash(struct img_param *img);
 void usage(void);
 int write_boot(struct img_param *img, const char *fname);
+int erase_data(struct img_param *img);
 
 #define MAX_SIZE	0x4000000
 int read_hyper_flash(uint32_t start_addr, uint32_t size, const char *hyper_fn)
@@ -144,6 +150,7 @@ int read_hyper_flash(uint32_t start_addr, uint32_t size, const char *hyper_fn)
 			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err);
 	if (ret != TEEC_SUCCESS) {
 		printf("TEEC_Opensession failed with code 0x%x Error: 0x%x", ret, err);
+		TEEC_FinalizeContext(&ctx);
 		return (int) ret;
 	}
 
@@ -215,6 +222,7 @@ int write_hyper_flash( struct img_param *img)
 			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err);
 	if (ret != TEEC_SUCCESS) {
 		printf("TEEC_Opensession failed with code 0x%x Error: 0x%x", ret, err);
+		TEEC_FinalizeContext(&ctx);
 		return (int) ret;
 	}
 
@@ -230,6 +238,50 @@ int write_hyper_flash( struct img_param *img)
 	op.params[3].tmpref.size   = img->size;
 	/*Invoke read command*/
 	ret = TEEC_InvokeCommand(&sess, HYPER_CMD_WRITE, &op,
+				 &err);
+	if (ret != TEEC_SUCCESS) {
+		printf("Writing failed with code 0x%x Error: 0x%x", ret, err);
+	}
+
+	TEEC_CloseSession(&sess);
+	TEEC_FinalizeContext(&ctx);
+	return ret;
+}
+
+int erase_hyper_flash( struct img_param *img)
+{
+	TEEC_Result ret;
+	TEEC_Context ctx;
+	TEEC_Session sess;
+	TEEC_Operation op;
+	TEEC_UUID uuid = HYPER_UUID;
+	uint32_t err;
+
+
+	/* Initialize a context connecting us to the TEE */
+	ret = TEEC_InitializeContext(NULL, &ctx);
+	if (ret != TEEC_SUCCESS) {
+		printf( "TEEC_InitializeContext failed with code 0x%x", ret);
+		return (int) ret;
+	}
+
+	ret = TEEC_OpenSession(&ctx, &sess, &uuid,
+			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err);
+	if (ret != TEEC_SUCCESS) {
+		printf("TEEC_Opensession failed with code 0x%x Error: 0x%x", ret, err);
+		TEEC_FinalizeContext(&ctx);
+		return (int) ret;
+	}
+
+	memset(&op, 0, sizeof(op));
+	op.paramTypes = TEEC_PARAM_TYPES(TEEC_VALUE_INPUT, TEEC_VALUE_INPUT,
+					 TEEC_NONE, TEEC_NONE);
+
+	op.params[0].value.a = img->flash_addr;
+	op.params[0].value.b = img->size;
+	op.params[1].value.b = img->img_id;
+	/*Invoke read command*/
+	ret = TEEC_InvokeCommand(&sess, HYPER_CMD_ERASE, &op,
 				 &err);
 	if (ret != TEEC_SUCCESS) {
 		printf("Writing failed with code 0x%x Error: 0x%x", ret, err);
@@ -288,27 +340,43 @@ int write_boot(struct img_param *img, const char *fname)
 	}
 	img->buf = buf;
 	printf("Write %s, addr = 0x%x, size = %ld\n", img->img_name, img->flash_addr, size);
-	return write_hyper_flash(img);
+	ret = write_hyper_flash(img);
+	free(buf);
+	return ret;
+}
+
+int erase_data(struct img_param *img)
+{
+	/*This is to handle case that hyperflash driver need size aligned to 8*/
+	if (img->size % FLASH_DATA_READ_BYTE_COUNT_8)
+		img->size += (FLASH_DATA_READ_BYTE_COUNT_8 -
+					img->size % FLASH_DATA_READ_BYTE_COUNT_8);
+	img->buf = NULL;
+	printf("Erase %s, addr = 0x%x, size = %du\n", img->img_name, img->flash_addr, img->size);
+	return erase_hyper_flash(img);
 }
 
 #define U_BOOT_SIZE (2*SECTOR_SIZE)
 #define FLASH_READ "-r"
 #define FLASH_WRITE "-w"
+#define FLASH_ERASE "-e"
 
 void usage(void)
 {
 	printf("usage for read: hyper_ca -r  <flash_addr> <size> [<file>]\n");
 	printf("read address has to be aligned to HyperFlash sector size (0x40000)\n");
 
-
-	printf("\nusage for write: hyper_ca -w <Image ID> <file>\n");
-	printf("Image IDs:PARAM, BL2, CERT, BL31, OPTEE, UBOOT\n");
+	printf("\nusage for write: hyper_ca -w <Image ID> [<file>]\n");
+	printf("Image IDs:PARAM, BL2, CERT, BL31, OPTEE, UBOOT, SSTDATA\n");
 	printf("Only binary files(*.bin) supported\n");
 	printf("hyper_ca -w PARAM ./bootparam_sa0.bin\n");
 	printf("hyper_ca -w CERT ./cert_header_sa6.bin\n");
 	printf("hyper_ca -w BL2 ./bl2.bin\n");
 	printf("hyper_ca -w BL31 ./bl31.bin\n");
 	printf("hyper_ca -w UBOOT ./u-boot.bin\n");
+
+	printf("\nusage for erase: hyper_ca -e <Image ID>\n");
+	printf("hyper_ca -e SSTDATA\n");
 }
 
 int main(int argc, char *argv[])
@@ -323,15 +391,31 @@ int main(int argc, char *argv[])
 		exit (TEEC_ERROR_GENERIC);
 	}
 
-	if (!strncmp(argv[1],FLASH_READ, sizeof(FLASH_READ))) {
+	if (!strncmp(argv[1], FLASH_READ, sizeof(FLASH_READ))) {
 		cmd = HYPER_CMD_READ;
-	}else if (!strncmp(argv[1],FLASH_WRITE, sizeof(FLASH_WRITE))) {
+	} else if (!strncmp(argv[1], FLASH_WRITE, sizeof(FLASH_WRITE))) {
 		cmd = HYPER_CMD_WRITE;
+	} else if (!strncmp(argv[1], FLASH_ERASE, sizeof(FLASH_ERASE))) {
+		cmd = HYPER_CMD_ERASE;
 	}
 
 	switch(cmd) {
+		case HYPER_CMD_ERASE:
+			if (argc!=3)
+				break;
+			for(i=0; i<MAX_IMAGES; i++) {
+				/*Search for image by name*/
+				if (!strncmp (argv[2], img_params[i].img_name,
+					strlen(img_params[i].img_name))) {
+						ret = erase_data(&img_params[i]);
+						exit(ret);
+				}
+			}
+			printf("Erase error: Image ID is wrong(%s)\n", argv[2]);
+			break;
+
 		case HYPER_CMD_WRITE:
-			if (argc !=4)
+			if (argc!=4)
 				break;
 			fname = argv[3];
 			for(i=0; i<MAX_IMAGES; i++) {
@@ -340,9 +424,9 @@ int main(int argc, char *argv[])
 					strlen(img_params[i].img_name))) {
 						ret = write_boot(&img_params[i], fname);
 						exit(ret);
-					}
+				}
 			}
-			printf("Error: Image ID is wrong(%s)\n", argv[2]);
+			printf("Write error: Image ID is wrong(%s)\n", argv[2]);
 			break;
 
 		case HYPER_CMD_READ:
