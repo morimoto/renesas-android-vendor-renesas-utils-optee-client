@@ -45,7 +45,6 @@ LOCAL_CFLAGS += $(CFLAGS)
 ifneq ($(CFG_TEE_CLIENT_LOG_FILE),)
 LOCAL_CFLAGS += -DTEEC_LOG_FILE=$(CFG_TEE_CLIENT_LOG_FILE)
 endif
-#CROSS_COMPILE := $(ANDROID_BUILD_TOP)/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-gnu-5.1/bin/aarch64-linux-gnu-
 
 LOCAL_CFLAGS += -DDEBUGLEVEL_$(CFG_TEE_CLIENT_LOG_LEVEL)
 LOCAL_CFLAGS += -DBINARY_PREFIX=\"TEEC\"
@@ -60,6 +59,8 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/public \
 #LOCAL_PRELINK_MODULE := false
 LOCAL_MODULE := libteec
 LOCAL_MODULE_TAGS := optional
+LOCAL_PROPRIETARY_MODULE := true
+
 include $(BUILD_SHARED_LIBRARY)
 
 ################################################################################
@@ -69,18 +70,20 @@ include $(CLEAR_VARS)
 LOCAL_CFLAGS += -DANDROID_BUILD
 LOCAL_CFLAGS += $(CFLAGS)
 
-
 LOCAL_SRC_FILES	+= ca/hyper_ca.c
 
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/public \
 		    $(ANDROID_TOP)external/zlib
 LOCAL_LDLIBS := -lz
 LOCAL_STATIC_LIBRARIES := libteec libm libz libc libdl
-LOCAL_MODULE := hyper_ca
 LOCAL_MODULE_TAGS := optional
 
-LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_MODULE := hyper_ca
+LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT_SBIN)
+LOCAL_UNSTRIPPED_PATH := $(TARGET_ROOT_OUT_SBIN_UNSTRIPPED)
 LOCAL_FORCE_STATIC_EXECUTABLE := true
+
+LOCAL_MODULE_TAGS := optional
 include $(BUILD_EXECUTABLE)
 
 ################################################################################
