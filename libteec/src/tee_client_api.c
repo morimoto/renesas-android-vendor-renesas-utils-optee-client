@@ -557,7 +557,7 @@ void TEEC_CloseSession(TEEC_Session *session)
 
 	memset(&arg, 0, sizeof(arg));
 
-	if (!session)
+	if (!session || !session->ctx)
 		return;
 
 	arg.session = session->session_id;
