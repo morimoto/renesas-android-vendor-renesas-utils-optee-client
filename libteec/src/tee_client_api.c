@@ -544,7 +544,7 @@ void TEEC_CloseSession(TEEC_Session *session)
 {
 	struct tee_ioctl_close_session_arg arg;
 
-	if (!session)
+	if (!session || !session->ctx)
 		return;
 
 	arg.session = session->session_id;
