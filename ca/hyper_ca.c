@@ -94,7 +94,7 @@ static struct img_param img_params[MAX_IMAGES] = {
 int read_hyper_flash(uint32_t start_addr, uint32_t size, const char *hyper_fn);
 int write_hyper_flash(struct img_param *img);
 int erase_hyper_flash(struct img_param *img);
-void usage(void);
+void usage(const char *name);
 int write_boot(struct img_param *img, const char *fname);
 int erase_data(struct img_param *img);
 
@@ -361,22 +361,22 @@ int erase_data(struct img_param *img)
 #define FLASH_WRITE "-w"
 #define FLASH_ERASE "-e"
 
-void usage(void)
+void usage(const char *name)
 {
-	printf("usage for read: hyper_ca -r  <flash_addr> <size> [<file>]\n");
+	printf("usage for read: %s -r  <flash_addr> <size> [<file>]\n", name);
 	printf("read address has to be aligned to HyperFlash sector size (0x40000)\n");
 
 	printf("\nusage for write: hyper_ca -w <Image ID> [<file>]\n");
 	printf("Image IDs:PARAM, BL2, CERT, BL31, OPTEE, UBOOT, SSTDATA\n");
 	printf("Only binary files(*.bin) supported\n");
-	printf("hyper_ca -w PARAM ./bootparam_sa0.bin\n");
-	printf("hyper_ca -w CERT ./cert_header_sa6.bin\n");
-	printf("hyper_ca -w BL2 ./bl2.bin\n");
-	printf("hyper_ca -w BL31 ./bl31.bin\n");
-	printf("hyper_ca -w UBOOT ./u-boot.bin\n");
+	printf("%s -w PARAM ./bootparam_sa0.bin\n", name);
+	printf("%s -w CERT ./cert_header_sa6.bin\n", name);
+	printf("%s -w BL2 ./bl2.bin\n", name);
+	printf("%s -w BL31 ./bl31.bin\n", name);
+	printf("%s -w UBOOT ./u-boot.bin\n", name);
 
-	printf("\nusage for erase: hyper_ca -e <Image ID>\n");
-	printf("hyper_ca -e SSTDATA\n");
+	printf("\nusage for erase: %s -e <Image ID>\n", name);
+	printf("%s -e SSTDATA\n", name);
 }
 
 int main(int argc, char *argv[])
@@ -387,7 +387,7 @@ int main(int argc, char *argv[])
 	int i, ret = TEEC_ERROR_GENERIC;
 
 	if (argc == 1) {
-		usage();
+		usage(argv[0]);
 		exit (TEEC_ERROR_GENERIC);
 	}
 
@@ -443,7 +443,7 @@ int main(int argc, char *argv[])
 			ret = read_hyper_flash(addr, size, fname);
 	}
 	if (ret) {
-		usage();
+		usage(argv[0]);
 		exit(TEEC_ERROR_GENERIC);
 	}
 }
