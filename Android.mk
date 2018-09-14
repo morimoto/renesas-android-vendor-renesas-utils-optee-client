@@ -64,7 +64,7 @@ LOCAL_PROPRIETARY_MODULE := true
 include $(BUILD_SHARED_LIBRARY)
 
 ################################################################################
-# Build hyper flash driver CA                                                  #
+# Build hyper flash driver CA for Android to support legacy IPL update         #
 ################################################################################
 include $(CLEAR_VARS)
 LOCAL_CFLAGS += -DANDROID_BUILD
@@ -75,15 +75,29 @@ LOCAL_SRC_FILES	+= ca/hyper_ca.c
 LOCAL_C_INCLUDES := $(LOCAL_PATH)/public \
 		    $(ANDROID_TOP)external/zlib
 LOCAL_LDLIBS := -lz
+LOCAL_SHARED_LIBRARIES := libteec libm libz libc libdl
+LOCAL_MODULE := hyper_ca_legacy
+LOCAL_MODULE_TAGS := optional
+LOCAL_PROPRIETARY_MODULE=true
+include $(BUILD_EXECUTABLE)
+
+################################################################################
+# Build hyper flash driver CA                                                  #
+################################################################################
+include $(CLEAR_VARS)
+LOCAL_CFLAGS += -DANDROID_BUILD
+LOCAL_CFLAGS += $(CFLAGS)
+
+LOCAL_SRC_FILES += ca/hyper_ca.c
+
+LOCAL_C_INCLUDES := $(LOCAL_PATH)/public \
+                    $(ANDROID_TOP)external/zlib
+LOCAL_LDLIBS := -lz
 LOCAL_STATIC_LIBRARIES := libteec libm libz libc libdl
-LOCAL_MODULE_TAGS := optional
-
 LOCAL_MODULE := hyper_ca
-LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT_SBIN)
-LOCAL_UNSTRIPPED_PATH := $(TARGET_ROOT_OUT_SBIN_UNSTRIPPED)
-LOCAL_FORCE_STATIC_EXECUTABLE := true
-
 LOCAL_MODULE_TAGS := optional
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(BUILD_EXECUTABLE)
 
 ################################################################################
