@@ -45,7 +45,7 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/../public \
     $(LOCAL_PATH)/../libteec/include \
     $(LOCAL_PATH)/src
 
-LOCAL_STATIC_LIBRARIES := libteec libm libz libc libdl
+LOCAL_SHARED_LIBRARIES := libteec libm libz libc libdl
 
 ifeq ($(CFG_TA_GPROF_SUPPORT),y)
 LOCAL_SRC_FILES += src/gprof.c
@@ -53,9 +53,7 @@ LOCAL_CFLAGS += -DCFG_TA_GPROF_SUPPORT
 endif
 
 LOCAL_MODULE := tee-supp
-LOCAL_MODULE_PATH := $(TARGET_ROOT_OUT_SBIN)
-LOCAL_UNSTRIPPED_PATH := $(TARGET_ROOT_OUT_SBIN_UNSTRIPPED)
-LOCAL_FORCE_STATIC_EXECUTABLE := true
-
+LOCAL_PROPRIETARY_MODULE := true
 LOCAL_MODULE_TAGS := optional
+
 include $(BUILD_EXECUTABLE)

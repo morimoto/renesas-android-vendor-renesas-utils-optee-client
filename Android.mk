@@ -2,6 +2,15 @@
 # Android optee-client and optee-supplicant makefile                                                #
 ################################################################################
 LOCAL_PATH := $(call my-dir)
+
+# set CFG_TEE_CLIENT_LOAD_PATH before include config.mk
+CFG_TEE_CLIENT_LOAD_PATH ?= /vendor/lib64
+
+# set CFG_TEE_DATA_PATH before include config.mk
+CFG_TEE_DATA_PATH ?= /data/vendor/tee
+TEEC_TEST_LOAD_PATH ?= /data/vendor/tee
+CFG_TEE_FS_PARENT_PATH ?= /data/vendor
+
 ################################################################################
 # Include optee-client common config and flags                                 #
 ################################################################################
