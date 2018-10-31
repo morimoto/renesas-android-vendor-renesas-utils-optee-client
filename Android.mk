@@ -9,7 +9,8 @@ CFG_TEE_CLIENT_LOAD_PATH ?= /vendor/lib64
 # set CFG_TEE_DATA_PATH before include config.mk
 CFG_TEE_DATA_PATH ?= /data/vendor/tee
 TEEC_TEST_LOAD_PATH ?= /data/vendor/tee
-CFG_TEE_FS_PARENT_PATH ?= /data/vendor
+CFG_TEE_FS_ANDROID_PARENT_PATH ?= /data/vendor
+CFG_TEE_FS_RECOVERY_PARENT_PATH ?= /mnt
 
 ################################################################################
 # Include optee-client common config and flags                                 #
