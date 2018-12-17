@@ -62,12 +62,19 @@ enum {
 	IMG_SSTDATA,
 };
 
-typedef struct img_param {
-	uint32_t img_id;
-	const char *img_name;
-	uint32_t flash_addr;
+struct img_sector {
 	uint32_t size;
+	uint32_t flash_addr;
 	uint8_t *buf;
+};
+
+typedef struct img_param {
+	struct img_sector *data;
+	const char *img_name;
+	uint32_t sectors_num;
+	uint32_t img_id;
+	uint32_t start_addr;
+	uint32_t total_size;
 }img_param_t;
 
 /*We can flash 7 images*/
@@ -76,19 +83,19 @@ typedef struct img_param {
 /*Set legal address and maximum size for every image*/
 static struct img_param img_params[MAX_IMAGES] = {
 		{.img_id = IMG_PARAM, .img_name = "PARAM",
-		.flash_addr = 0, .size =1*SECTOR_SIZE,},
+		.start_addr = 0, .total_size =1*SECTOR_SIZE,},
 		{.img_id = IMG_IPL2, .img_name = "BL2",
-		.flash_addr = 0x40000, .size =1*SECTOR_SIZE,},
+		.start_addr = 0x40000, .total_size =1*SECTOR_SIZE,},
 		{.img_id = IMG_CERT, .img_name = "CERT",
-		.flash_addr = 0x180000, .size =1*SECTOR_SIZE,},
+		.start_addr = 0x180000, .total_size =1*SECTOR_SIZE,},
 		{.img_id = IMG_BL31, .img_name = "BL31",
-		.flash_addr = 0x1C0000, .size =1*SECTOR_SIZE,},
+		.start_addr = 0x1C0000, .total_size =1*SECTOR_SIZE,},
 		{.img_id = IMG_OPTEE, .img_name = "OPTEE",
-		.flash_addr = 0x200000, .size =2*SECTOR_SIZE,},
+		.start_addr = 0x200000, .total_size =2*SECTOR_SIZE,},
 		{.img_id = IMG_UBOOT, .img_name = "UBOOT",
-		.flash_addr = 0x640000, .size =4*SECTOR_SIZE,},
+		.start_addr = 0x640000, .total_size =4*SECTOR_SIZE,},
 		{.img_id = IMG_SSTDATA, .img_name = "SSTDATA",
-		.flash_addr = 0x300000, .size =4*SECTOR_SIZE,},
+		.start_addr = 0x300000, .total_size =4*SECTOR_SIZE,},
 };
 
 int read_hyper_flash(uint32_t start_addr, uint32_t size, const char *hyper_fn);
@@ -207,9 +214,9 @@ int write_hyper_flash( struct img_param *img)
 	TEEC_Session sess;
 	TEEC_Operation op;
 	TEEC_UUID uuid = HYPER_UUID;
+	uint32_t i;
 	uint32_t err;
 	uint32_t crc = crc32(0L, Z_NULL, 0);
-
 
 	/* Initialize a context connecting us to the TEE */
 	ret = TEEC_InitializeContext(NULL, &ctx);
@@ -228,17 +235,23 @@ int write_hyper_flash( struct img_param *img)
 
 	memset(&op, 0, sizeof(op));
 	op.paramTypes = TEEC_PARAM_TYPES(TEEC_VALUE_INPUT, TEEC_VALUE_INPUT,
-					 TEEC_NONE, TEEC_MEMREF_TEMP_INOUT);
+					 TEEC_VALUE_INPUT, TEEC_MEMREF_TEMP_INOUT);
 
-	op.params[0].value.a = img->flash_addr;
-	op.params[0].value.b = img->size;
-	op.params[1].value.a = crc32(crc, img->buf, img->size);
-	op.params[1].value.b = img->img_id;
-	op.params[3].tmpref.buffer = img->buf;
-	op.params[3].tmpref.size   = img->size;
-	/*Invoke read command*/
-	ret = TEEC_InvokeCommand(&sess, HYPER_CMD_WRITE, &op,
+	for (i = 0; i < img->sectors_num; ++i) {
+		op.params[0].value.a = img->data[i].flash_addr;
+		op.params[0].value.b = img->data[i].size;
+		op.params[1].value.a = crc32(crc, img->data[i].buf, img->data[i].size);
+		op.params[1].value.b = img->img_id;
+		op.params[2].value.a = i;
+		op.params[3].tmpref.buffer = img->data[i].buf;
+		op.params[3].tmpref.size   = img->data[i].size;
+		/*Invoke write command*/
+		ret = TEEC_InvokeCommand(&sess, HYPER_CMD_WRITE, &op,
 				 &err);
+		if (ret != TEEC_SUCCESS)
+			break;
+	}
+	
 	if (ret != TEEC_SUCCESS) {
 		printf("Writing failed with code 0x%x Error: 0x%x", ret, err);
 	}
@@ -277,8 +290,8 @@ int erase_hyper_flash( struct img_param *img)
 	op.paramTypes = TEEC_PARAM_TYPES(TEEC_VALUE_INPUT, TEEC_VALUE_INPUT,
 					 TEEC_NONE, TEEC_NONE);
 
-	op.params[0].value.a = img->flash_addr;
-	op.params[0].value.b = img->size;
+	op.params[0].value.a = img->start_addr;
+	op.params[0].value.b = img->total_size;
 	op.params[1].value.b = img->img_id;
 	/*Invoke read command*/
 	ret = TEEC_InvokeCommand(&sess, HYPER_CMD_ERASE, &op,
@@ -298,6 +311,7 @@ int write_boot(struct img_param *img, const char *fname)
 {
 	struct stat st;
 	int ret;
+	uint32_t i;
 	uint8_t *buf = NULL;
 	FILE *boot;
 	off_t size;
@@ -308,21 +322,21 @@ int write_boot(struct img_param *img, const char *fname)
 		return TEEC_ERROR_GENERIC;
 	}
 
-	if (st.st_size > img->size) {
+	if (st.st_size > img->total_size) {
 		printf("Error: File size overflow (%ld)\n", st.st_size);
 		return TEEC_ERROR_GENERIC;
 	}
-	img->size = st.st_size;
+	img->total_size = st.st_size;
 	/*This is to handle case that hyperflash driver need size aligned to 8*/
-	if (img->size % FLASH_DATA_READ_BYTE_COUNT_8)
-		img->size += (FLASH_DATA_READ_BYTE_COUNT_8-
-					img->size %FLASH_DATA_READ_BYTE_COUNT_8);
-	buf = malloc(img->size);
+	if (img->total_size % FLASH_DATA_READ_BYTE_COUNT_8)
+		img->total_size += (FLASH_DATA_READ_BYTE_COUNT_8-
+					img->total_size %FLASH_DATA_READ_BYTE_COUNT_8);
+	buf = malloc(img->total_size);
 	if(!buf) {
 		printf("Error:Memory allocation failed\n");
 		return TEEC_ERROR_GENERIC;
 	}
-	memset(buf, 0xFF,img->size);
+	memset(buf, 0xFF,img->total_size);
 	boot = fopen(fname, "rb");
 	if (!boot ) {
 		printf("%s file open error\n", fname);
@@ -338,21 +352,44 @@ int write_boot(struct img_param *img, const char *fname)
 			return TEEC_ERROR_GENERIC;
 		}
 	}
-	img->buf = buf;
-	printf("Write %s, addr = 0x%x, size = %ld\n", img->img_name, img->flash_addr, size);
+
+	printf("Write %s, addr = 0x%x, size = %ld\n", img->img_name, img->start_addr, size);
+
+	img->sectors_num = img->total_size / SECTOR_SIZE;
+	if (img->total_size % SECTOR_SIZE)
+		img->sectors_num++;
+	img->data = malloc(sizeof(*img->data) * img->sectors_num);
+	if (!img->data) {
+		printf("Error:Memory allocation failed\n");
+		free(buf);
+		return TEEC_ERROR_GENERIC;
+	}
+
+	for (i = 0; i < img->sectors_num; ++i) {
+		/* All data blocks, exclude last block, has size equal @SECTOR_SIZE */
+		if (i == (img->sectors_num - 1))
+			img->data[i].size = img->total_size % SECTOR_SIZE;
+		else
+			img->data[i].size = SECTOR_SIZE;
+		img->data[i].flash_addr = img->start_addr + i * SECTOR_SIZE;
+		img->data[i].buf = buf + i * SECTOR_SIZE;
+	}
+
 	ret = write_hyper_flash(img);
+
+	free(img->data);
 	free(buf);
+
 	return ret;
 }
 
 int erase_data(struct img_param *img)
 {
 	/*This is to handle case that hyperflash driver need size aligned to 8*/
-	if (img->size % FLASH_DATA_READ_BYTE_COUNT_8)
-		img->size += (FLASH_DATA_READ_BYTE_COUNT_8 -
-					img->size % FLASH_DATA_READ_BYTE_COUNT_8);
-	img->buf = NULL;
-	printf("Erase %s, addr = 0x%x, size = %du\n", img->img_name, img->flash_addr, img->size);
+	if (img->total_size % FLASH_DATA_READ_BYTE_COUNT_8)
+		img->total_size += (FLASH_DATA_READ_BYTE_COUNT_8 -
+					img->total_size % FLASH_DATA_READ_BYTE_COUNT_8);
+	printf("Erase %s, addr = 0x%x, size = %du\n", img->img_name, img->start_addr, img->total_size);
 	return erase_hyper_flash(img);
 }
 
