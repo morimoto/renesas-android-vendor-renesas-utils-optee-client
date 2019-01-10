@@ -36,9 +36,13 @@
 
 #define TA_NAME	"hyper.ta"
 
-#define HYPER_UUID \
+#define LEGACY_HYPER_UUID \
 		{ 0xd96a5b40, 0xe2c7, 0xb1af, \
 			{ 0x87, 0x94, 0x10, 0x02, 0xa5, 0xd5, 0xc7, 0x1f } }
+
+#define HYPER_UUID \
+		{ 0xc462df74, 0x657b, 0x4f2b, \
+			{ 0xb7, 0x7e, 0x0e, 0x9b, 0x3e, 0x45, 0x27, 0x29 } }
 
 
 #define HYPER_CMD_INIT_DRV		0
@@ -109,12 +113,12 @@ int erase_data(struct img_param *img);
 int read_hyper_flash(uint32_t start_addr, uint32_t size, const char *hyper_fn)
 {
 	uint32_t sectors = size/SECTOR_SIZE, i;
-//	uint32_t rest = size%SECTOR_SIZE;
 	TEEC_Result ret;
 	TEEC_Context ctx;
 	TEEC_Session sess;
 	TEEC_Operation op;
 	TEEC_UUID uuid = HYPER_UUID;
+	TEEC_UUID legacy_uuid = LEGACY_HYPER_UUID;
 	uint32_t err, wsize;
 	FILE *hyper;
 	uint8_t *buf = NULL;
@@ -156,9 +160,14 @@ int read_hyper_flash(uint32_t start_addr, uint32_t size, const char *hyper_fn)
 	ret = TEEC_OpenSession(&ctx, &sess, &uuid,
 			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err);
 	if (ret != TEEC_SUCCESS) {
-		printf("TEEC_Opensession failed with code 0x%x Error: 0x%x", ret, err);
-		TEEC_FinalizeContext(&ctx);
-		return (int) ret;
+		printf("Pseudo TA is not reachable, trying to use legacy TA..\n");
+		ret = TEEC_OpenSession(&ctx, &sess, &legacy_uuid,
+			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err);
+		if (ret != TEEC_SUCCESS) {
+			printf("TEEC_Opensession failed with code 0x%x Error: 0x%x", ret, err);
+			TEEC_FinalizeContext(&ctx);
+			return (int) ret;
+		}
 	}
 
 /*	sesion open, prepare parameters*/
@@ -214,9 +223,11 @@ int write_hyper_flash( struct img_param *img)
 	TEEC_Session sess;
 	TEEC_Operation op;
 	TEEC_UUID uuid = HYPER_UUID;
+	TEEC_UUID legacy_uuid = LEGACY_HYPER_UUID;
 	uint32_t i;
 	uint32_t err;
 	uint32_t crc = crc32(0L, Z_NULL, 0);
+	bool use_split_flashing = true;
 
 	/* Initialize a context connecting us to the TEE */
 	ret = TEEC_InitializeContext(NULL, &ctx);
@@ -228,32 +239,52 @@ int write_hyper_flash( struct img_param *img)
 	ret = TEEC_OpenSession(&ctx, &sess, &uuid,
 			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err);
 	if (ret != TEEC_SUCCESS) {
-		printf("TEEC_Opensession failed with code 0x%x Error: 0x%x", ret, err);
-		TEEC_FinalizeContext(&ctx);
-		return (int) ret;
+		printf("Pseudo TA is not reachable, trying to use legacy TA..\n");
+		ret = TEEC_OpenSession(&ctx, &sess, &legacy_uuid,
+			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err);
+		use_split_flashing = false;
+		if (ret != TEEC_SUCCESS) {
+			printf("TEEC_Opensession failed with code 0x%x Error: 0x%x", ret, err);
+			TEEC_FinalizeContext(&ctx);
+			return (int) ret;
+		}
 	}
 
 	memset(&op, 0, sizeof(op));
-	op.paramTypes = TEEC_PARAM_TYPES(TEEC_VALUE_INPUT, TEEC_VALUE_INPUT,
-					 TEEC_VALUE_INPUT, TEEC_MEMREF_TEMP_INOUT);
 
-	for (i = 0; i < img->sectors_num; ++i) {
-		op.params[0].value.a = img->data[i].flash_addr;
-		op.params[0].value.b = img->data[i].size;
-		op.params[1].value.a = crc32(crc, img->data[i].buf, img->data[i].size);
+	if (use_split_flashing) {
+		op.paramTypes = TEEC_PARAM_TYPES(TEEC_VALUE_INPUT, TEEC_VALUE_INPUT,
+					 TEEC_VALUE_INPUT, TEEC_MEMREF_TEMP_INOUT);
+		for (i = 0; i < img->sectors_num; ++i) {
+			op.params[0].value.a = img->data[i].flash_addr;
+			op.params[0].value.b = img->data[i].size;
+			op.params[1].value.a = crc32(crc, img->data[i].buf, img->data[i].size);
+			op.params[1].value.b = img->img_id;
+			op.params[2].value.a = i;
+			op.params[3].tmpref.buffer = img->data[i].buf;
+			op.params[3].tmpref.size   = img->data[i].size;
+			/*Invoke write command*/
+			ret = TEEC_InvokeCommand(&sess, HYPER_CMD_WRITE, &op,
+					 &err);
+			if (ret != TEEC_SUCCESS)
+				break;
+		}
+	} else {
+		op.paramTypes = TEEC_PARAM_TYPES(TEEC_VALUE_INPUT, TEEC_VALUE_INPUT,
+					 TEEC_NONE, TEEC_MEMREF_TEMP_INOUT);
+		op.params[0].value.a = img->start_addr;
+		op.params[0].value.b = img->total_size;
+		op.params[1].value.a = crc32(crc, img->data[0].buf, img->total_size);
 		op.params[1].value.b = img->img_id;
-		op.params[2].value.a = i;
-		op.params[3].tmpref.buffer = img->data[i].buf;
-		op.params[3].tmpref.size   = img->data[i].size;
+		op.params[3].tmpref.buffer = img->data[0].buf;
+		op.params[3].tmpref.size   = img->total_size;
 		/*Invoke write command*/
 		ret = TEEC_InvokeCommand(&sess, HYPER_CMD_WRITE, &op,
-				 &err);
-		if (ret != TEEC_SUCCESS)
-			break;
+				&err);
 	}
-	
+
 	if (ret != TEEC_SUCCESS) {
-		printf("Writing failed with code 0x%x Error: 0x%x", ret, err);
+		printf("Writing failed with code 0x%x Error: 0x%x\n", ret, err);
 	}
 
 	TEEC_CloseSession(&sess);
@@ -268,6 +299,7 @@ int erase_hyper_flash( struct img_param *img)
 	TEEC_Session sess;
 	TEEC_Operation op;
 	TEEC_UUID uuid = HYPER_UUID;
+	TEEC_UUID legacy_uuid = LEGACY_HYPER_UUID;
 	uint32_t err;
 
 
@@ -281,9 +313,14 @@ int erase_hyper_flash( struct img_param *img)
 	ret = TEEC_OpenSession(&ctx, &sess, &uuid,
 			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err);
 	if (ret != TEEC_SUCCESS) {
-		printf("TEEC_Opensession failed with code 0x%x Error: 0x%x", ret, err);
-		TEEC_FinalizeContext(&ctx);
-		return (int) ret;
+		printf("Pseudo TA is not reachable, trying to use legacy TA..\n");
+		ret = TEEC_OpenSession(&ctx, &sess, &legacy_uuid,
+			       TEEC_LOGIN_PUBLIC, NULL, NULL, &err);
+		if (ret != TEEC_SUCCESS) {
+			printf("TEEC_Opensession failed with code 0x%x Error: 0x%x", ret, err);
+			TEEC_FinalizeContext(&ctx);
+			return (int) ret;
+		}
 	}
 
 	memset(&op, 0, sizeof(op));
@@ -297,7 +334,7 @@ int erase_hyper_flash( struct img_param *img)
 	ret = TEEC_InvokeCommand(&sess, HYPER_CMD_ERASE, &op,
 				 &err);
 	if (ret != TEEC_SUCCESS) {
-		printf("Writing failed with code 0x%x Error: 0x%x", ret, err);
+		printf("Writing failed with code 0x%x Error: 0x%x\n", ret, err);
 	}
 
 	TEEC_CloseSession(&sess);
@@ -366,14 +403,12 @@ int write_boot(struct img_param *img, const char *fname)
 	}
 
 	for (i = 0; i < img->sectors_num; ++i) {
-		/* All data blocks, exclude last block, has size equal @SECTOR_SIZE */
-		if (i == (img->sectors_num - 1))
-			img->data[i].size = img->total_size % SECTOR_SIZE;
-		else
-			img->data[i].size = SECTOR_SIZE;
+		img->data[i].size = SECTOR_SIZE;
 		img->data[i].flash_addr = img->start_addr + i * SECTOR_SIZE;
 		img->data[i].buf = buf + i * SECTOR_SIZE;
 	}
+	/* All data blocks, exclude last block, has size equal @SECTOR_SIZE */
+	img->data[img->sectors_num - 1].size = img->total_size % SECTOR_SIZE;
 
 	ret = write_hyper_flash(img);
 
