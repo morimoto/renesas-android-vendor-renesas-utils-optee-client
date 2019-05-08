@@ -11,14 +11,12 @@
 # CFG_TEE_CLIENT_LOG_LEVEL
 #   Client (User Non Secure) log level
 #   Supported values: 0 (no traces) to 4 (all traces)
-CFG_TEE_CLIENT_LOG_LEVEL?=1
-export CFG_TEE_CLIENT_LOG_LEVEL
+CFG_TEE_CLIENT_LOG_LEVEL ?= 1
 
 # CFG_TEE_SUPP_LOG_LEVEL
 #   Supplicant log level
 #   Supported values: 0 (no traces) to 4 (all traces)
-CFG_TEE_SUPP_LOG_LEVEL?=1
-export CFG_TEE_SUPP_LOG_LEVEL
+CFG_TEE_SUPP_LOG_LEVEL ?= 1
 
 # CFG_TEE_CLIENT_LOG_FILE
 # The location of the client log file when logging to file is enabled.
@@ -50,7 +48,7 @@ CFG_GP_SOCKETS ?= y
 # Default output directory.
 # May be absolute, or relative to the optee_client source directory.
 O               ?= out
-export O
+
 # To be used instead of $(O) in sub-directories
 OO := $(if $(filter /%,$(O)),$(O),$(CURDIR)/../$(O))
 
