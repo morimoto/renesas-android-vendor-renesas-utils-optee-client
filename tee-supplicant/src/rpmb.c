@@ -114,6 +114,7 @@ static pthread_mutex_t rpmb_mutex = PTHREAD_MUTEX_INITIALIZER;
  */
 
 #define MMC_BLOCK_MAJOR	179
+#define RPMB_MULTI_CMD_MAX_CMDS 3
 
 /* mmc_ioc_cmd.opcode */
 #define MMC_SEND_EXT_CSD		 8
@@ -129,6 +130,9 @@ static pthread_mutex_t rpmb_mutex = PTHREAD_MUTEX_INITIALIZER;
 #define MMC_RSP_R1      (MMC_RSP_PRESENT|MMC_RSP_CRC|MMC_RSP_OPCODE)
 
 #define MMC_CMD_ADTC	(1 << 5)	/* Addressed data transfer command */
+
+#define MMC_RSP_SPI_S1	(1 << 7)	/* one status byte */
+#define MMC_RSP_SPI_R1	(MMC_RSP_SPI_S1)
 
 /* mmc_ioc_cmd.write_flag */
 #define MMC_CMD23_ARG_REL_WR	(1 << 31) /* CMD23 reliable write */
@@ -610,26 +614,38 @@ static uint32_t read_ext_csd(int fd, uint8_t *ext_csd)
 	return TEEC_SUCCESS;
 }
 
+static inline void set_single_cmd(struct mmc_ioc_cmd *ioc, __u32 opcode,
+				  int write_flag, unsigned int blocks)
+{
+	ioc->opcode = opcode;
+	ioc->write_flag = write_flag;
+	ioc->arg = 0x0;
+	ioc->blksz = 512;
+	ioc->blocks = blocks;
+	ioc->flags = MMC_RSP_SPI_R1 | MMC_RSP_R1 | MMC_CMD_ADTC;
+}
+
 static uint32_t rpmb_data_req(int fd, struct rpmb_data_frame *req_frm,
 			      size_t req_nfrm, struct rpmb_data_frame *rsp_frm,
 			      size_t rsp_nfrm)
 {
-	int st;
+	int err;
 	size_t i;
 	uint16_t msg_type = ntohs(req_frm->msg_type);
-	struct mmc_ioc_cmd cmd;
+	struct mmc_ioc_cmd *ioc;
+	struct mmc_ioc_multi_cmd *mioc;
+	struct rpmb_data_frame frame_status = {0};
 
-	memset(&cmd, 0, sizeof(cmd));
-	cmd.blksz = 512;
-	cmd.blocks = req_nfrm;
-	cmd.data_ptr = (uintptr_t)req_frm;
-	cmd.flags = MMC_RSP_R1 | MMC_CMD_ADTC;
-	cmd.opcode = MMC_WRITE_MULTIPLE_BLOCK;
-	cmd.write_flag = 1;
+	mioc = (struct mmc_ioc_multi_cmd *)
+		malloc(sizeof(struct mmc_ioc_multi_cmd) +
+		       RPMB_MULTI_CMD_MAX_CMDS * sizeof(struct mmc_ioc_cmd));
+	if (!mioc)
+		return -ENOMEM;
 
 	for (i = 1; i < req_nfrm; i++) {
 		if (req_frm[i].msg_type != msg_type) {
 			EMSG("All request frames shall be of the same type");
+			free(mioc);
 			return TEEC_ERROR_BAD_PARAMETERS;
 		}
 	}
@@ -642,77 +658,63 @@ static uint32_t rpmb_data_req(int fd, struct rpmb_data_frame *req_frm,
 	case RPMB_MSG_TYPE_REQ_AUTH_DATA_WRITE:
 		if (rsp_nfrm != 1) {
 			EMSG("Expected only one response frame");
+			free(mioc);
 			return TEEC_ERROR_BAD_PARAMETERS;
 		}
 
-		/* Send write request frame(s) */
-		cmd.write_flag |= MMC_CMD23_ARG_REL_WR;
-		/*
-		 * Black magic: tested on a HiKey board with a HardKernel eMMC
-		 * module. When postsleep values are zero, the kernel logs
-		 * random errors: "mmc_blk_ioctl_cmd: Card Status=0x00000E00"
-		 * and ioctl() fails.
-		 */
-		cmd.postsleep_min_us = 20000;
-		cmd.postsleep_max_us = 50000;
-		st = IOCTL(fd, MMC_IOC_CMD, &cmd);
-		if (st < 0)
-			return TEEC_ERROR_GENERIC;
-		cmd.postsleep_min_us = 0;
-		cmd.postsleep_max_us = 0;
+		mioc->num_of_cmds = 3;
 
-		/* Send result request frame */
-		memset(rsp_frm, 0, 1);
-		rsp_frm->msg_type = htons(RPMB_MSG_TYPE_REQ_RESULT_READ);
-		cmd.data_ptr = (uintptr_t)rsp_frm;
-		cmd.write_flag &= ~MMC_CMD23_ARG_REL_WR;
-		st = IOCTL(fd, MMC_IOC_CMD, &cmd);
-		if (st < 0)
-			return TEEC_ERROR_GENERIC;
+		/* Write request */
+		ioc = &mioc->cmds[0];
+		set_single_cmd(ioc, MMC_WRITE_MULTIPLE_BLOCK, (1 << 31) | 1, 1);
+		mmc_ioc_cmd_set_data((*ioc), req_frm);
 
-		/* Read response frame */
-		cmd.opcode = MMC_READ_MULTIPLE_BLOCK;
-		cmd.write_flag = 0;
-		cmd.blocks = rsp_nfrm;
-		st = IOCTL(fd, MMC_IOC_CMD, &cmd);
-		if (st < 0)
-			return TEEC_ERROR_GENERIC;
+		/* Result request */
+		ioc = &mioc->cmds[1];
+		frame_status.msg_type = htobe16(RPMB_MSG_TYPE_REQ_RESULT_READ);
+		set_single_cmd(ioc, MMC_WRITE_MULTIPLE_BLOCK, 1, 1);
+		mmc_ioc_cmd_set_data((*ioc), &frame_status);
+
+		/* Get response */
+		ioc = &mioc->cmds[2];
+		set_single_cmd(ioc, MMC_READ_MULTIPLE_BLOCK, 0, 1);
+		mmc_ioc_cmd_set_data((*ioc), rsp_frm);
+
 		break;
 
 	case RPMB_MSG_TYPE_REQ_WRITE_COUNTER_VAL_READ:
 		if (rsp_nfrm != 1) {
 			EMSG("Expected only one response frame");
+			free(mioc);
 			return TEEC_ERROR_BAD_PARAMETERS;
 		}
 
 		/* Fall through */
 	case RPMB_MSG_TYPE_REQ_AUTH_DATA_READ:
-		if (req_nfrm != 1) {
-			EMSG("Expected only one request frame");
-			return TEEC_ERROR_BAD_PARAMETERS;
-		}
+		mioc->num_of_cmds = 2;
 
-		/* Send request frame */
-		st = IOCTL(fd, MMC_IOC_CMD, &cmd);
-		if (st < 0)
-			return TEEC_ERROR_GENERIC;
+		/* Read request */
+		ioc = &mioc->cmds[0];
+		set_single_cmd(ioc, MMC_WRITE_MULTIPLE_BLOCK, 1, 1);
+		mmc_ioc_cmd_set_data((*ioc), req_frm);
 
-		/* Read response frames */
-		cmd.data_ptr = (uintptr_t)rsp_frm;
-		cmd.opcode = MMC_READ_MULTIPLE_BLOCK;
-		cmd.write_flag = 0;
-		cmd.blocks = rsp_nfrm;
-		st = IOCTL(fd, MMC_IOC_CMD, &cmd);
-		if (st < 0)
-			return TEEC_ERROR_GENERIC;
+		/* Get response */
+		ioc = &mioc->cmds[1];
+		set_single_cmd(ioc, MMC_READ_MULTIPLE_BLOCK, 0, rsp_nfrm);
+		mmc_ioc_cmd_set_data((*ioc), rsp_frm);
+
 		break;
 
 	default:
 		EMSG("Unsupported message type: %d", msg_type);
+		free(mioc);
 		return TEEC_ERROR_GENERIC;
 	}
 
-	return TEEC_SUCCESS;
+	err = ioctl(fd, MMC_IOC_MULTI_CMD, mioc);
+
+	free(mioc);
+	return err;
 }
 
 static uint32_t rpmb_get_dev_info(uint16_t dev_id, struct rpmb_dev_info *info)
