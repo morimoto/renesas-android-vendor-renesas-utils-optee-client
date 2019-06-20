@@ -634,7 +634,7 @@ static uint32_t rpmb_data_req(int fd, struct rpmb_data_frame *req_frm,
 	uint16_t msg_type = ntohs(req_frm->msg_type);
 	struct mmc_ioc_cmd *ioc;
 	struct mmc_ioc_multi_cmd *mioc;
-	struct rpmb_data_frame frame_status = {0};
+	struct rpmb_data_frame frame_status = { };
 
 	mioc = (struct mmc_ioc_multi_cmd *)
 		malloc(sizeof(struct mmc_ioc_multi_cmd) +
