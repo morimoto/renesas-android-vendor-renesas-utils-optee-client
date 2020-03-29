@@ -82,7 +82,7 @@ LOCAL_LDLIBS := -lz
 LOCAL_SHARED_LIBRARIES := libteec libm libz libc libdl
 LOCAL_MODULE := hyper_ca_legacy
 LOCAL_MODULE_TAGS := optional
-LOCAL_PROPRIETARY_MODULE=true
+LOCAL_PROPRIETARY_MODULE := true
 include $(BUILD_EXECUTABLE)
 
 ################################################################################
@@ -99,8 +99,9 @@ LOCAL_C_INCLUDES := $(LOCAL_PATH)/public \
 LOCAL_LDLIBS := -lz
 LOCAL_STATIC_LIBRARIES := libteec libm libz libc libdl
 LOCAL_MODULE := hyper_ca
+LOCAL_MODULE_CLASS := EXECUTABLES
 LOCAL_MODULE_TAGS := optional
-LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/sbin
+LOCAL_MODULE_PATH := $(TARGET_RECOVERY_ROOT_OUT)/system/bin
 LOCAL_FORCE_STATIC_EXECUTABLE := true
 include $(BUILD_EXECUTABLE)
 
