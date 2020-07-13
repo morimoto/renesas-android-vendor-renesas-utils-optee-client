@@ -46,17 +46,16 @@ CFG_GP_SOCKETS ?= y
 # CFG_TA_GPROF_SUPPORT
 #   Enable dumping gprof data, not used unless secure world decides
 #   to dump something
-CFG_TA_GPROF_SUPPORT ?= y
+CFG_TA_GPROF_SUPPORT ?= n
 
 # CFG_FTRACE_SUPPORT
 #   Enable dumping ftrace data, not used unless secure world decides
 #   to dump something
-CFG_FTRACE_SUPPORT ?= y
+CFG_FTRACE_SUPPORT ?= n
 
 # Default output directory.
 # May be absolute, or relative to the optee_client source directory.
 O               ?= out
-export O
 # To be used instead of $(O) in sub-directories
 OO := $(if $(filter /%,$(O)),$(O),$(CURDIR)/../$(O))
 
